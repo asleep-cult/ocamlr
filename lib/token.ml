@@ -1,27 +1,25 @@
 type t =
+  | String of string
+  | Identifier of string
   | OpenParenthesis
   | CloseParanthesis
-  | Quote
   | Star
   | Plus
+  | Tick
+  | Question
   | VerticalBar
   | Colon
-  | DoubleDot
-  | Identifier
-  | Number
   | Eof
-  | Invalid
 
-let token_name = function
+let show_token = function
+  | String(cont) -> Printf.sprintf "String(cont: %s)" cont
+  | Identifier(cont) -> Printf.sprintf "Identifier(cont: %s)" cont
   | OpenParenthesis -> "OpenParenthesis"
   | CloseParanthesis -> "CloseParanthesis"
-  | Quote -> "Quote"
   | Star -> "Star"
   | Plus -> "Plus"
+  | Tick -> "Tick"
+  | Question -> "Question"
   | VerticalBar -> "VerticalBar"
   | Colon -> "Colon"
-  | DoubleDot -> "DoubleDot"
-  | Identifier -> "Identifier"
-  | Number -> "Number"
   | Eof -> "Eof"
-  | Invalid -> "Invalid"

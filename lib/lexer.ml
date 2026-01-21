@@ -1,5 +1,8 @@
 type t = { source: string; pos: int }
 
+exception Unterminated_string
+exception Invalid_token
+
 let eof = '\x00'
 
 let is_whitespace = function
@@ -26,20 +29,33 @@ let rec advance_while pred lex =
   if pred (peek_char lex 0) then advance_while pred { lex with pos = lex.pos+1}
   else lex
 
-let identifier_token lex = advance_while is_identifier_start lex
+let identifier_token lex =
+  let pos = lex.pos in 
+  let lex = advance_while is_identifier lex in
+  lex, Token.Identifier (String.sub lex.source pos (lex.pos-pos))
+
+let string_token lex =
+  let lex = advance lex 1 in
+  let pos = lex.pos in
+  let lex = advance_while (
+    function
+      | c when c = '\n' || c = eof -> raise Unterminated_string
+      | '"' -> false
+      | _ -> true) lex in
+  advance lex 1, Token.String (String.sub lex.source pos (lex.pos-pos))
 
 let next_token lex =
   let lex = advance_while is_whitespace lex in
   match peek_char lex 0 with
     | '(' -> advance lex 1, Token.OpenParenthesis
     | ')' -> advance lex 1, Token.CloseParanthesis
-    | '"' -> advance lex 1, Token.Quote
-    | '*' -> advance lex 1, Token.Star
+    | '"' -> string_token lex
     | '+' -> advance lex 1, Token.Plus
+    | '*' -> advance lex 1, Token.Star
+    | '\'' -> advance lex 1, Token.Tick
+    | '?' -> advance lex 1, Token.Question
     | '|' -> advance lex 1, Token.VerticalBar
     | ':' -> advance lex 1, Token.Colon
-    | '.' when peek_char lex 1 == '.' -> advance lex 2, Token.DoubleDot
-    | c when is_identifier_start c -> advance_while is_identifier lex, Token.Identifier
-    | c when is_digit c -> advance_while is_digit lex, Token.Number
+    | c when is_identifier_start c -> identifier_token lex
     | c when c = eof -> lex, Token.Eof
-    | _ -> lex, Token.Invalid
+    | _ -> raise Invalid_token
