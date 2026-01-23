@@ -1,12 +1,12 @@
 type t = { source: string; pos: int }
 
 exception Unterminated_string
-exception Invalid_token
+exception Invalid_token of char
 
 let eof = '\x00'
 
 let is_whitespace = function
-  | ' ' | '\t' | '\r' -> true
+  | ' ' | '\t' | '\r' | '\n' -> true
   | _ -> false
 
 let is_identifier_start = function
@@ -56,6 +56,7 @@ let next_token lex =
     | '?' -> advance lex 1, Token.Question
     | '|' -> advance lex 1, Token.VerticalBar
     | ':' -> advance lex 1, Token.Colon
+    | '=' when peek_char lex 1 = '>' -> advance lex 2, Token.Arrow
     | c when is_identifier_start c -> identifier_token lex
     | c when c = eof -> lex, Token.Eof
-    | _ -> raise Invalid_token
+    | c -> raise (Invalid_token c)

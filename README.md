@@ -4,5 +4,5 @@ concepts in OCaml.
 
 ```
 nonterminal:
-    | CONSTTOKEN "custom_token" nonterminal
+    | CONSTTOKEN "custom_token" nonterminal => create_nonterminal
 ```

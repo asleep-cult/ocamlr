@@ -1,6 +1,7 @@
 type t =
   | String of string
   | Identifier of string
+  | Arrow
   | OpenParenthesis
   | CloseParanthesis
   | Star
@@ -14,6 +15,7 @@ type t =
 let show_token = function
   | String(cont) -> Printf.sprintf "String(cont: %s)" cont
   | Identifier(cont) -> Printf.sprintf "Identifier(cont: %s)" cont
+  | Arrow -> "Arrow"
   | OpenParenthesis -> "OpenParenthesis"
   | CloseParanthesis -> "CloseParanthesis"
   | Star -> "Star"

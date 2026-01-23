@@ -1,21 +1,21 @@
 type t = { tok_table: (string, int) Hashtbl.t; lex: Lexer.t; toks: Token.t list }
 
-exception Invalid_syntax
+exception Invalid_syntax of string
 
 let peek_token parser i =
   let rec aux parser =
     if List.length parser.toks >= i then parser
     else
       let lex, tok = Lexer.next_token parser.lex in
-      aux { parser with lex = lex; toks = tok :: parser.toks }
+      aux { parser with lex = lex; toks = (parser.toks @ [tok]) }
     in
   let parser = aux parser in
-  parser, List.nth parser.toks (List.length parser.toks - i)
+  parser, List.nth parser.toks (i-1)
 
 let bump_parser parser =
   match parser.toks with
-  | _ :: rest -> { parser with toks = rest } (* I actually want everything but the last item... ? *)
-  | [] -> parser (* I think i could get rid of this logic but then we're lexing the same thing over and over again? *)
+  | _ :: rest -> { parser with toks = rest }
+  | [] -> parser
 
 let next_token parser =
   let parser, tok = peek_token parser 1 in
@@ -27,7 +27,7 @@ let parse_atom parser =
   let id = match tok with
     | Token.String(cont)
     | Token.Identifier(cont) -> Hashtbl.find parser.tok_table cont
-    | _ -> raise Invalid_syntax
+    | _ -> raise (Invalid_syntax (Token.show_token tok))
   in
   parser, Ast.{
     span = { startpos = pos; endpos = parser.lex.pos };
@@ -48,17 +48,36 @@ let parse_suffix parser expr =
     span = { startpos = expr.span.startpos; endpos = parser.lex.pos};
     data = data }
 
-let parse_group parser =
-  parse_atom parser
-let parse_group_item parser = 
-  let parser, tok = next_token parser in
+let rec parse_expr_list parser =
+  let rec aux parser exprs =
+    let parser, tok = peek_token parser 1 in
+    match tok with
+      | Token.OpenParenthesis
+      | Token.Identifier(_)
+      | Token.String(_) ->
+        let parser, expr = parse_group_item parser in
+        aux parser (expr :: exprs)
+      | _ -> parser, exprs
+  in
+  let parser, exprs = aux parser [] in
+  parser, List.rev exprs
+
+and parse_group parser =
+  let pos = parser.lex.pos in
+  let parser, exprs = parse_expr_list parser in
+  parser, Ast.{ span = { startpos = pos; endpos = parser.lex.pos };
+    data = Ast.Group { exprs = exprs } }
+
+and parse_group_item parser = 
+  let parser, tok = peek_token parser 1 in
   let parser, expr = match tok with
     | Token.OpenParenthesis ->
       let parser = bump_parser parser in
       let parser, expr = parse_group parser in
       let parser, tok = next_token parser in
-      (* Why can't I match on tok and raise an exception... *)
-      parser, expr
+      (match tok with
+        | Token.CloseParanthesis -> parser, expr
+        | _ -> raise (Invalid_syntax (Token.show_token tok)))
     | _ -> parse_atom parser
   in
   parse_suffix parser expr
@@ -68,13 +87,59 @@ let parse_rule parser =
   let parser, tok = next_token parser in
   let rule_name = match tok with
     | Token.Identifier(cont) -> cont
-    | _ -> raise Invalid_syntax
+    | _ -> raise (Invalid_syntax (Token.show_token tok))
   in
   let parser, tok = peek_token parser 1 in
   let parser, is_entrypoint = match tok with
     | Token.Tick -> bump_parser parser, true
     | _ -> parser, false
   in
+  let parser, tok = next_token parser in
+  let () = match tok with  (* um ... *)
+    | Token.Colon -> ()
+    | _ -> raise (Invalid_syntax (Token.show_token tok))
+  in
+  let parser, tok = peek_token parser 1 in
+  let parser = match tok with
+    | Token.VerticalBar -> bump_parser parser
+    | _ -> parser
+  in
+  let rec aux parser items =
+    let pos = parser.lex.pos in
+    let parser, exprs = parse_expr_list parser in
+    let parser, tok = peek_token parser 1 in
+    let parser, action = match tok with
+      | Token.Arrow ->
+        let parser = bump_parser parser in
+        let parser, tok = next_token parser in
+        parser, (match tok with
+          | Token.Identifier(cont) -> Some cont
+          | _ -> raise (Invalid_syntax (Token.show_token tok)))
+      | _ -> parser, None
+    in
+    let items = Ast.{
+      span = { startpos = pos; endpos = parser.lex.pos };
+      exprs = exprs;
+      action = action } :: items in
+    let parser, tok = peek_token parser 1 in
+    match tok with
+      | Token.VerticalBar ->
+        let parser = bump_parser parser in
+        aux parser items
+      | _ -> parser, items
+  in
+  let parser, items = aux parser [] in
   parser, Ast.{
-    span = Ast.{ startpos = pos; endpos = parser.lex.pos };
-    name = rule_name; is_entrypoint = is_entrypoint; items = [] }
+    span = { startpos = pos; endpos = parser.lex.pos };
+    name = rule_name; is_entrypoint = is_entrypoint; items = items }
+
+let parse_rules parser =
+  let rec aux parser rules =
+    let parser, tok = peek_token parser 1 in
+    match tok with
+    | Token.Eof -> parser, rules
+    | _ ->
+      let parser, rule = parse_rule parser in
+      aux parser (rule :: rules)
+  in
+  let _, rules = aux parser [] in List.rev rules
